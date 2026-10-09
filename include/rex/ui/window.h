@@ -301,6 +301,14 @@ class Window {
   /// Valid after Open() returns successfully.
   virtual void* GetNativeWindowHandle() const { return nullptr; }
 
+  // UI thread only. For renderers that own their Vulkan instance/swapchain
+  // independently of Presenter. The caller owns this surface description and
+  // must release it (and its presentation resources) before closing the window.
+  // This does not attach a presenter or change presenter_surface_.
+  std::unique_ptr<Surface> CreateExternalSurface(Surface::TypeFlags allowed_types) {
+    return CreateSurface(allowed_types);
+  }
+
   // Desired state stored by the common Window, externally modifiable, read-only
   // in the implementation.
   void SetMainMenu(std::unique_ptr<MenuItem> new_main_menu);
