@@ -478,9 +478,14 @@ FileMappingHandle CreateFileMappingHandle(const std::filesystem::path& path, siz
   if (ret < 0) {
     return kFileMappingHandleInvalid;
   }
+  // Views are mapped through the descriptor, never reopened by name, so the
+  // name can go now. The object then lives exactly as long as the descriptor
+  // and its views -- freed by the kernel however the process ends. Unlinking
+  // only on close left it in /dev/shm, holding its RAM, after every exit that
+  // skipped destructors (_Exit, a crash, a kill).
+  shm_unlink(full_path.c_str());
   if (rex_ftruncate64(ret, static_cast<off_t>(length)) != 0) {
     close(ret);
-    shm_unlink(full_path.c_str());
     return kFileMappingHandleInvalid;
   }
   return static_cast<FileMappingHandle>(ret);
@@ -489,10 +494,8 @@ FileMappingHandle CreateFileMappingHandle(const std::filesystem::path& path, siz
 
 void CloseFileMappingHandle(FileMappingHandle handle, const std::filesystem::path& path) {
   close(static_cast<int>(handle));
-#if !REX_PLATFORM_ANDROID
-  auto full_path = MakeShmName(path);
-  shm_unlink(full_path.c_str());
-#endif
+  // The name was already unlinked at creation (CreateFileMappingHandle).
+  (void)path;
 }
 
 void* MapFileView(FileMappingHandle handle, void* base_address, size_t length, PageAccess access,
