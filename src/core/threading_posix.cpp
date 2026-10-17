@@ -1014,9 +1014,19 @@ class PosixCondition<Thread> : public PosixConditionBase {
   static void* ThreadStartRoutine(void* parameter);
   inline bool signaled() const override { return signaled_; }
   inline void post_execution() override {
-    if (thread_) {
-      pthread_join(thread_, nullptr);
+    // Finished thread handles remain signaled and may be waited on repeatedly.
+    // Wait and WaitMultiple hold mutex_, so native cleanup is serialized here.
+    if (cleanup_completed_) {
+      return;
     }
+    if (thread_) {
+      int result = pthread_join(thread_, nullptr);
+      if (result != 0) {
+        REXSYS_ERROR("pthread_join failed ({})", result);
+        return;
+      }
+    }
+    cleanup_completed_ = true;
 #if defined(__APPLE__)
     if (suspend_sem_ != SEM_FAILED) {
       sem_close(suspend_sem_);
@@ -1027,6 +1037,7 @@ class PosixCondition<Thread> : public PosixConditionBase {
 #endif
   }
   pthread_t thread_;
+  bool cleanup_completed_ = false;  // Protected by mutex_.
   bool signaled_;
   int exit_code_;
   State state_;             // Protected by state_mutex_
