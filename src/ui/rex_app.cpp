@@ -20,6 +20,7 @@
 #include <rex/ui/flags.h>
 #include <rex/kernel/crt/heap.h>
 #include <rex/filesystem.h>
+#include <rex/filesystem/vfs.h>
 #include <rex/logging/sink.h>
 #include <rex/logging.h>
 #include <rex/ui/overlay/achievement_toast.h>
@@ -261,20 +262,32 @@ bool ReXApp::ConstructRuntime(const PathConfig& paths) {
   OnLoadXexImage(xex_image);
 
   // Mirrors the game:\ / d:\ -> game_data_root mapping in Runtime::SetupVfs.
+  // Any other path names a device the app mounted itself in OnLoadXexImage
+  // (an image linked into the executable, say), so it only has to resolve.
   {
     constexpr std::string_view kGameDevice = "game:\\";
     constexpr std::string_view kDDevice = "d:\\";
     std::string_view tail = xex_image;
+    bool on_game_data = true;
     if (tail.starts_with(kGameDevice)) {
       tail.remove_prefix(kGameDevice.size());
     } else if (tail.starts_with(kDDevice)) {
       tail.remove_prefix(kDDevice.size());
+    } else {
+      on_game_data = false;
     }
-    std::string host_tail{tail};
-    std::replace(host_tail.begin(), host_tail.end(), '\\', '/');
-    auto xex_host = paths.game_data_root / host_tail;
-    if (!std::filesystem::is_regular_file(xex_host)) {
-      auto msg = fmt::format("Entrypoint XEX not found: {}", xex_host.string());
+    if (on_game_data) {
+      std::string host_tail{tail};
+      std::replace(host_tail.begin(), host_tail.end(), '\\', '/');
+      auto xex_host = paths.game_data_root / host_tail;
+      if (!std::filesystem::is_regular_file(xex_host)) {
+        auto msg = fmt::format("Entrypoint XEX not found: {}", xex_host.string());
+        REXLOG_ERROR("{}", msg);
+        rex::ShowSimpleMessageBox(rex::SimpleMessageBoxType::Error, msg);
+        return false;
+      }
+    } else if (!runtime_->file_system()->ResolvePath(xex_image)) {
+      auto msg = fmt::format("Entrypoint XEX not found: {}", xex_image);
       REXLOG_ERROR("{}", msg);
       rex::ShowSimpleMessageBox(rex::SimpleMessageBoxType::Error, msg);
       return false;
