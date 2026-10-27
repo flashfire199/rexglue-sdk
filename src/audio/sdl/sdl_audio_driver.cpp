@@ -55,6 +55,18 @@ bool SDLAudioDriver::Initialize() {
   desired_spec.format = SDL_AUDIO_F32LE;
   desired_spec.channels = frame_channels_;
   sdl_device_channels_ = frame_channels_;
+  // Query the endpoint before opening. Opening a 6ch stream first
+  // makes PipeWire report the stream node's 6 channels, not the sink's.
+  {
+    SDL_AudioSpec pre = {};
+    if (SDL_GetAudioDeviceFormat(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &pre, NULL)) {
+      REXAPU_INFO("audio endpoint before open: {} ch, {} Hz", pre.channels, pre.freq);
+      if (pre.channels > 0 && pre.channels <= 2) {
+        desired_spec.channels = 2;
+        sdl_device_channels_ = 2;
+      }
+    }
+  }
   sdl_stream_ = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &desired_spec,
                                           SDLCallback, this);
   if (!sdl_stream_) {
